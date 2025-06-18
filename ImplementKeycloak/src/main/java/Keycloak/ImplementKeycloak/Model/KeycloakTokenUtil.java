@@ -40,10 +40,10 @@ public class KeycloakTokenUtil {
         params.add(new BasicNameValuePair("username", username));
         params.add(new BasicNameValuePair("password", password));
 
-        post.setEntity(new UrlEncodedFormEntity(params));
+        post.setEntity(new UrlEncodedFormEntity(params)); //map can not pass directly to encode so we used NameValuePair
         post.setHeader("Content-Type", "application/x-www-form-urlencoded");
 
-        ClassicHttpResponse response = (ClassicHttpResponse) client.executeOpen(null, post, HttpClientContext.create());
+        ClassicHttpResponse response = (ClassicHttpResponse) client.executeOpen(null, post, HttpClientContext.create()); //response is generic so type casted
         HttpEntity entity = response.getEntity();
 
         String json = EntityUtils.toString(entity);

@@ -34,10 +34,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 
 @Service
 public class KeycloakUserServiceImpl implements KeycloakUserService{
@@ -59,26 +56,31 @@ public class KeycloakUserServiceImpl implements KeycloakUserService{
     public Integer createUser(UserRequest payload) throws IOException, ProtocolException {
         String accessToken = tokenUtil.getAccessToken();
 
-        ObjectNode userJson = new ObjectMapper().createObjectNode();
-        userJson.put("username",  payload.getUserName().trim().replaceAll("\\s+", ""));
-        userJson.put("enabled", true);
-        userJson.put("email", payload.getEmail());
-        userJson.put("emailVerified", true);
+        Map<String, Object> userMap = new HashMap<>();
+        userMap.put("username", payload.getUserName().trim().replaceAll("\\s+", ""));
+        userMap.put("enabled", true);
+        userMap.put("email", payload.getEmail());
+        userMap.put("emailVerified", true);
 
-        ArrayNode credentials = userJson.putArray("credentials");
-        ObjectNode cred = credentials.addObject();
-        cred.put("type", "password");
-        cred.put("value", payload.getPassword());
-        cred.put("temporary", false);
+        Map<String, Object> credential = new HashMap<>();
+        credential.put("type", "password");
+        credential.put("value", payload.getPassword());
+        credential.put("temporary", false);
+
+        List<Map<String, Object>> credentials = new ArrayList<>();
+        credentials.add(credential);
+
+        userMap.put("credentials", credentials);
 
         HttpPost post = new HttpPost(keycloakUrl + "/admin/realms/"+realm+"/users");
         post.setHeader("Authorization", "Bearer " + accessToken);
         post.setHeader("Content-Type", "application/json");
-        post.setEntity(new StringEntity(userJson.toString()));
-
         ObjectMapper mapper = new ObjectMapper();
-        String userPayload = mapper.writeValueAsString(userJson);
-        System.out.println("Payload: " + userPayload);
+        String json = mapper.writeValueAsString(userMap); // This gives valid JSON
+
+        post.setEntity(new StringEntity(json, ContentType.APPLICATION_JSON));
+
+        System.out.println("Payload: " + json);
 
         HttpClient client = HttpClients.createDefault();
         HttpResponse response = client.execute(post);
@@ -125,7 +127,7 @@ public class KeycloakUserServiceImpl implements KeycloakUserService{
             String json = EntityUtils.toString(entity);
 
             ObjectMapper objectMapper = new ObjectMapper();
-            JsonNode usersArray = objectMapper.readTree(json);
+            JsonNode usersArray = objectMapper.readTree(json); //we can use pojo if not JsonNode - jsckson library
 
             List<JsonNode> usersList = new ArrayList<>();
             if (usersArray.isArray()) {
@@ -166,7 +168,14 @@ public class KeycloakUserServiceImpl implements KeycloakUserService{
 
         String userId = users.get(0).get("id").asText();
 
-        ObjectNode updatedUser = new ObjectMapper().createObjectNode();
+        ObjectNode updatedUser = new ObjectMapper().createObjectNode(); //convert directly in json
+
+           /*
+              ObjectMapper mapper = new ObjectMapper();
+        String json = mapper.writeValueAsString(userMap); // This gives valid JSON
+        post.setEntity(new StringEntity(json, ContentType.APPLICATION_JSON));
+            */
+
         updatedUser.put("firstName", payload.getFirstName());
         updatedUser.put("lastName", payload.getLastName());
         updatedUser.put("email", payload.getEmail());
@@ -274,7 +283,7 @@ public class KeycloakUserServiceImpl implements KeycloakUserService{
 
         String actionsUrl = keycloakUrl + "/admin/realms/" + realm + "/users/" + userId + "/execute-actions-email";
 
-        HttpPost post = new HttpPost(actionsUrl);
+        HttpPut post = new HttpPut(actionsUrl);
         post.setHeader("Authorization", "Bearer " + accessToken);
         post.setHeader("Content-Type", "application/json");
 
@@ -307,7 +316,6 @@ public class KeycloakUserServiceImpl implements KeycloakUserService{
 
     @Override
     public String getUserIdByUsername(String username, String accessToken) throws IOException, ParseException {
-        //String accessToken = tokenUtil.getAccessToken();
 
         String searchUrl = keycloakUrl + "/admin/realms/"+realm+"/users?username="
                 + URLEncoder.encode(username, StandardCharsets.UTF_8)
