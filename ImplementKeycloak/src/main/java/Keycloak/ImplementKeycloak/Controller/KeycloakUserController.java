@@ -116,7 +116,7 @@ public class KeycloakUserController {
     }
 
     @GetMapping("/search")
-    public ResponseEntity<List<ThinkUser>> searchFilter(UserRequest payload) {
+    public ResponseEntity<List<ThinkUser>> searchFilter(@RequestBody UserRequest payload) {
         try {
             List<ThinkUser> flag = userService.searchFilter(payload);
             return ResponseEntity.ok(flag);

@@ -7,10 +7,10 @@ import lombok.Data;
 @AllArgsConstructor
 public class UserRequest {
 
-    private String username;
+    private String userName;
     private String email;
     private String password;
-    private boolean enable;
+    private Boolean enable;
     private String firstName;
     private String lastName;
     private String city;

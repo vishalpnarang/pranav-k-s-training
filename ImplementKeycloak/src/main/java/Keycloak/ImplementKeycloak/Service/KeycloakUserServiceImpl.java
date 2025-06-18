@@ -60,7 +60,7 @@ public class KeycloakUserServiceImpl implements KeycloakUserService{
         String accessToken = tokenUtil.getAccessToken();
 
         ObjectNode userJson = new ObjectMapper().createObjectNode();
-        userJson.put("username",  payload.getUsername().trim().replaceAll("\\s+", ""));
+        userJson.put("username",  payload.getUserName().trim().replaceAll("\\s+", ""));
         userJson.put("enabled", true);
         userJson.put("email", payload.getEmail());
         userJson.put("emailVerified", true);
@@ -91,7 +91,7 @@ public class KeycloakUserServiceImpl implements KeycloakUserService{
                 System.out.println("Created User ID: " + keycloakUserId);
 
                 ThinkUser user = new ThinkUser();
-                user.setUserName(payload.getUsername());
+                user.setUserName(payload.getUserName());
                 user.setEmail(payload.getEmail());
                 user.setKeycloakId(keycloakUserId);
                 user.setFirstName(payload.getFirstName());
@@ -146,7 +146,7 @@ public class KeycloakUserServiceImpl implements KeycloakUserService{
         String accessToken = tokenUtil.getAccessToken();
 
         String searchUrl = keycloakUrl + "/admin/realms/"+realm+"/users?username="
-                + URLEncoder.encode(payload.getUsername(), StandardCharsets.UTF_8)
+                + URLEncoder.encode(payload.getUserName(), StandardCharsets.UTF_8)
                 + "&exact=true";
         HttpGet get = new HttpGet(searchUrl);
         get.setHeader("Authorization", "Bearer " + accessToken);
@@ -170,7 +170,7 @@ public class KeycloakUserServiceImpl implements KeycloakUserService{
         updatedUser.put("firstName", payload.getFirstName());
         updatedUser.put("lastName", payload.getLastName());
         updatedUser.put("email", payload.getEmail());
-        updatedUser.put("enabled", payload.isEnable());
+        updatedUser.put("enabled", payload.getEnable());
 
         HttpPut put = new HttpPut(keycloakUrl + "/admin/realms/"+realm+"/users/" + userId);
         put.setHeader("Authorization", "Bearer " + accessToken);
@@ -408,7 +408,7 @@ public class KeycloakUserServiceImpl implements KeycloakUserService{
 
     @Override
     public List<ThinkUser> searchFilter(UserRequest payload){
-        return userRepository.searchFilter(payload.getFirstName(), payload.getLastName(), payload.getUsername(), payload.getEmail(), payload.getCity(), payload.getStatus());
+        return userRepository.searchFilter(payload.getFirstName(), payload.getLastName(), payload.getUserName(), payload.getEmail(), payload.getCity(), payload.getStatus());
     }
 
 
