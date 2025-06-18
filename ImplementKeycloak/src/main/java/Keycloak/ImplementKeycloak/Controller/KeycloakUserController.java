@@ -1,5 +1,7 @@
 package Keycloak.ImplementKeycloak.Controller;
 
+import Keycloak.ImplementKeycloak.Model.Constants;
+import Keycloak.ImplementKeycloak.Model.ThinkUser;
 import Keycloak.ImplementKeycloak.Model.UserRequest;
 import Keycloak.ImplementKeycloak.Service.KeycloakUserService;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -18,44 +20,48 @@ public class KeycloakUserController {
         @PostMapping("/create")
         public ResponseEntity<String> createUser(@RequestBody UserRequest payload) {
             try {
-                int status = userService.createUser(payload.getUsername(), payload.getEmail(), payload.getPassword());
-                if(status == 409)
+                int status = userService.createUser(payload);
+                if(status == Constants.CONFLICT)
                    return ResponseEntity.ok("User already exist");
-                return ResponseEntity.ok("User created");
+                if(status == Constants.CREATED)
+                   return ResponseEntity.ok("User created successfully");
+                return ResponseEntity.ok("Something went wrong");
             } catch (Exception e) {
-                return ResponseEntity.status(500).body("Error: " + e.getMessage());
+                return ResponseEntity.status(Constants.INTERNAL_SERVER_ERROR).body("Error: " + e.getMessage());
             }
         }
 
     @PostMapping("/update")
     public ResponseEntity<String> UpdateUser(@RequestBody UserRequest payload) {
         try {
-            userService.updateUser(payload.getUsername(), payload.getEmail(), payload.isEnable());
-            return ResponseEntity.ok("User updated");
+            int status = userService.updateUser(payload);
+            if(status == Constants.SUCCESSFULLY_PROCEEDED)
+               return ResponseEntity.ok("User updated successfully");
+            return ResponseEntity.ok("Something went wrong");
         } catch (Exception e) {
-            return ResponseEntity.status(500).body("Error: " + e.getMessage());
+            return ResponseEntity.status(Constants.INTERNAL_SERVER_ERROR).body("Error: " + e.getMessage());
         }
     }
 
-    @GetMapping("/get/users")
+    @GetMapping("/get/keycloak/users")
     public ResponseEntity<List<JsonNode>> getAllUsers() {
         try {
             List<JsonNode> list = userService.getAllUsers();
             return ResponseEntity.ok(list);
-            //ResponseEntity.status(200).body(list);
         } catch (Exception e) {
-            return ResponseEntity.status(500).body(null);
+            return ResponseEntity.status(Constants.INTERNAL_SERVER_ERROR).body(null);
         }
     }
 
     @PostMapping("/delete")
-    public ResponseEntity<Boolean> deleteUserByUsername(@RequestParam("username") String username) {
+    public ResponseEntity<String> deleteUserByUsername(@RequestParam("username") String username) {
         try {
             boolean flag = userService.deleteUserByUsername(username);
-            return ResponseEntity.ok(flag);
-            //ResponseEntity.status(200).body(list);
+            if(flag)
+              return ResponseEntity.ok("User deleted successfully");
+            return ResponseEntity.ok("Something went wrong");
         } catch (Exception e) {
-            return ResponseEntity.status(500).body(null);
+            return ResponseEntity.status(Constants.INTERNAL_SERVER_ERROR).body(null);
         }
     }
 
@@ -63,9 +69,9 @@ public class KeycloakUserController {
     public ResponseEntity<String> login(@RequestParam("username") String username, @RequestParam("password") String password){
         try {
             String token = userService.login(username, password);
-            return ResponseEntity.status(200).body(token);
+            return ResponseEntity.status(Constants.STATUS_OK).body(token);
         } catch (Exception e) {
-            return ResponseEntity.status(500).body(null);
+            return ResponseEntity.status(Constants.INTERNAL_SERVER_ERROR).body(null);
         }
     }
 
@@ -75,7 +81,7 @@ public class KeycloakUserController {
             String flag = userService.sendResetPasswordEmail(username);
             return ResponseEntity.ok(flag);
         } catch (Exception e) {
-            return ResponseEntity.status(500).body(null);
+            return ResponseEntity.status(Constants.INTERNAL_SERVER_ERROR).body(null);
         }
     }
 
@@ -85,7 +91,37 @@ public class KeycloakUserController {
             String flag = userService.setPassword(username, newPassword);
             return ResponseEntity.ok(flag);
         } catch (Exception e) {
-            return ResponseEntity.status(500).body(null);
+            return ResponseEntity.status(Constants.INTERNAL_SERVER_ERROR).body(null);
         }
     }
+
+    @GetMapping("/last/login/details")
+    public ResponseEntity<String> getLastLoginDetails(@RequestParam("username") String username) {
+        try {
+            String flag = userService.getLastLoginTime(username);
+            return ResponseEntity.ok(flag);
+        } catch (Exception e) {
+            return ResponseEntity.status(Constants.INTERNAL_SERVER_ERROR).body(null);
+        }
     }
+
+    @GetMapping("/get/users")
+    public ResponseEntity<List<ThinkUser>> getAllUsersFromTable() {
+        try {
+            List<ThinkUser> flag = userService.getAllUsersFromTable();
+            return ResponseEntity.ok(flag);
+        } catch (Exception e) {
+            return ResponseEntity.status(Constants.INTERNAL_SERVER_ERROR).body(null);
+        }
+    }
+
+    @GetMapping("/search")
+    public ResponseEntity<List<ThinkUser>> searchFilter(UserRequest payload) {
+        try {
+            List<ThinkUser> flag = userService.searchFilter(payload);
+            return ResponseEntity.ok(flag);
+        } catch (Exception e) {
+            return ResponseEntity.status(Constants.INTERNAL_SERVER_ERROR).body(null);
+        }
+    }
+}

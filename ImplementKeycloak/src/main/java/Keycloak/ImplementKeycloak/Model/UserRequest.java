@@ -11,4 +11,8 @@ public class UserRequest {
     private String email;
     private String password;
     private boolean enable;
+    private String firstName;
+    private String lastName;
+    private String city;
+    private Integer status;
 }

@@ -1,6 +1,10 @@
 package Keycloak.ImplementKeycloak.Service;
 
+import Keycloak.ImplementKeycloak.Model.Constants;
 import Keycloak.ImplementKeycloak.Model.KeycloakTokenUtil;
+import Keycloak.ImplementKeycloak.Model.ThinkUser;
+import Keycloak.ImplementKeycloak.Model.UserRequest;
+import Keycloak.ImplementKeycloak.repository.UserRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -11,6 +15,8 @@ import org.apache.hc.client5.http.classic.methods.HttpGet;
 import org.apache.hc.client5.http.classic.methods.HttpPost;
 import org.apache.hc.client5.http.classic.methods.HttpPut;
 import org.apache.hc.client5.http.entity.UrlEncodedFormEntity;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
 import org.apache.hc.client5.http.protocol.HttpClientContext;
 import org.apache.hc.core5.http.*;
@@ -19,14 +25,19 @@ import org.apache.hc.core5.http.io.entity.StringEntity;
 import org.apache.hc.core5.http.message.BasicNameValuePair;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class KeycloakUserServiceImpl implements KeycloakUserService{
@@ -41,36 +52,65 @@ public class KeycloakUserServiceImpl implements KeycloakUserService{
     @Value("${keycloak.client-id}")
     private String clientId;
 
-    public int createUser(String username, String email, String password) throws IOException, ParseException {
+    @Autowired
+    private UserRepository userRepository;
+
+    @Override
+    public Integer createUser(UserRequest payload) throws IOException, ProtocolException {
         String accessToken = tokenUtil.getAccessToken();
 
         ObjectNode userJson = new ObjectMapper().createObjectNode();
-        userJson.put("username", username);
+        userJson.put("username",  payload.getUsername().trim().replaceAll("\\s+", ""));
         userJson.put("enabled", true);
-        userJson.put("email", email);
+        userJson.put("email", payload.getEmail());
+        userJson.put("emailVerified", true);
 
         ArrayNode credentials = userJson.putArray("credentials");
         ObjectNode cred = credentials.addObject();
         cred.put("type", "password");
-        cred.put("value", password);
+        cred.put("value", payload.getPassword());
         cred.put("temporary", false);
 
-        HttpPost post = new HttpPost(keycloakUrl + "/admin/realms/master/users");
+        HttpPost post = new HttpPost(keycloakUrl + "/admin/realms/"+realm+"/users");
         post.setHeader("Authorization", "Bearer " + accessToken);
         post.setHeader("Content-Type", "application/json");
         post.setEntity(new StringEntity(userJson.toString()));
 
+        ObjectMapper mapper = new ObjectMapper();
+        String userPayload = mapper.writeValueAsString(userJson);
+        System.out.println("Payload: " + userPayload);
+
         HttpClient client = HttpClients.createDefault();
         HttpResponse response = client.execute(post);
+
+        if(response.getCode() == Constants.CREATED){
+            Header locationHeader = response.getHeader("Location");
+            if (locationHeader != null) {
+                String location = locationHeader.getValue();
+                String keycloakUserId = location.substring(location.lastIndexOf("/") + 1);
+                System.out.println("Created User ID: " + keycloakUserId);
+
+                ThinkUser user = new ThinkUser();
+                user.setUserName(payload.getUsername());
+                user.setEmail(payload.getEmail());
+                user.setKeycloakId(keycloakUserId);
+                user.setFirstName(payload.getFirstName());
+                user.setLastName(payload.getLastName());
+                user.setStatus(1);
+                user.setCity(payload.getCity());
+                userRepository.save(user);
+            }
+        }
 
         System.out.println("Status: " + response.getCode());
         return response.getCode();
     }
 
+    @Override
     public List<JsonNode> getAllUsers() throws IOException, ParseException {
         String accessToken = tokenUtil.getAccessToken();
 
-        String url = keycloakUrl + "/admin/realms/master/users";
+        String url = keycloakUrl + "/admin/realms/"+ realm +"/users";
 
         HttpGet get = new HttpGet(url);
         get.setHeader("Authorization", "Bearer " + accessToken);
@@ -80,7 +120,7 @@ public class KeycloakUserServiceImpl implements KeycloakUserService{
         ClassicHttpResponse response = (ClassicHttpResponse) client.execute(get);
 
         int statusCode = response.getCode();
-        if (statusCode == 200) {
+        if (statusCode == Constants.STATUS_OK) {
             HttpEntity entity = response.getEntity();
             String json = EntityUtils.toString(entity);
 
@@ -101,10 +141,13 @@ public class KeycloakUserServiceImpl implements KeycloakUserService{
         }
     }
 
-    public void updateUser(String username, String newEmail, boolean enabled) throws IOException, ParseException {
+    @Override
+    public Integer updateUser(UserRequest payload) throws IOException, ParseException {
         String accessToken = tokenUtil.getAccessToken();
 
-        String searchUrl = keycloakUrl + "/admin/realms/master/users?username=" + URLEncoder.encode(username, StandardCharsets.UTF_8);
+        String searchUrl = keycloakUrl + "/admin/realms/"+realm+"/users?username="
+                + URLEncoder.encode(payload.getUsername(), StandardCharsets.UTF_8)
+                + "&exact=true";
         HttpGet get = new HttpGet(searchUrl);
         get.setHeader("Authorization", "Bearer " + accessToken);
 
@@ -118,29 +161,45 @@ public class KeycloakUserServiceImpl implements KeycloakUserService{
 
         if (users.isEmpty()) {
             System.out.println("User not found");
-            return;
+            return 0;
         }
 
-        String userId = users.get(0).get("id").asText();  // Get the user ID
+        String userId = users.get(0).get("id").asText();
 
         ObjectNode updatedUser = new ObjectMapper().createObjectNode();
-        updatedUser.put("email", newEmail);
-        updatedUser.put("enabled", enabled);
+        updatedUser.put("firstName", payload.getFirstName());
+        updatedUser.put("lastName", payload.getLastName());
+        updatedUser.put("email", payload.getEmail());
+        updatedUser.put("enabled", payload.isEnable());
 
-        HttpPut put = new HttpPut(keycloakUrl + "/admin/realms/master/users/" + userId);
+        HttpPut put = new HttpPut(keycloakUrl + "/admin/realms/"+realm+"/users/" + userId);
         put.setHeader("Authorization", "Bearer " + accessToken);
         put.setHeader("Content-Type", "application/json");
         put.setEntity(new StringEntity(updatedUser.toString()));
 
         HttpResponse putResponse = client.execute(put);
         System.out.println("Update Status: " + putResponse.getCode());
+        if(putResponse.getCode() == Constants.SUCCESSFULLY_PROCEEDED){
+            Optional<ThinkUser> user = userRepository.findByKeycloakId(userId);
+            if(user.isPresent()){
+                var thinkUser = user.get();
+                thinkUser.setFirstName(payload.getFirstName());
+                thinkUser.setLastName(payload.getLastName());
+                thinkUser.setEmail(payload.getEmail());
+                thinkUser.setCity(payload.getCity());
+                userRepository.save(thinkUser);
+            }
+        }
+        return  putResponse.getCode();
     }
 
+    @Override
     public boolean deleteUserByUsername(String username) throws IOException, ParseException {
         String accessToken = tokenUtil.getAccessToken();
 
-        String searchUrl = keycloakUrl + "/admin/realms/master/users?username=" + URLEncoder.encode(username, StandardCharsets.UTF_8);
-
+        String searchUrl = keycloakUrl + "/admin/realms/"+realm+"/users?username="
+                + URLEncoder.encode(username, StandardCharsets.UTF_8)
+                + "&exact=true";
         HttpGet get = new HttpGet(searchUrl);
         get.setHeader("Authorization", "Bearer " + accessToken);
 
@@ -156,14 +215,22 @@ public class KeycloakUserServiceImpl implements KeycloakUserService{
 
         String userId = array.get(0).get("id").asText();
 
-        String deleteUrl = keycloakUrl + "/admin/realms/master/users/" + userId;
+        String deleteUrl = keycloakUrl + "/admin/realms/"+realm+"/users/" + userId;
 
         HttpDelete delete = new HttpDelete(deleteUrl);
         delete.setHeader("Authorization", "Bearer " + accessToken);
 
         ClassicHttpResponse deleteResponse = (ClassicHttpResponse) client.execute(delete);
         System.out.println("Delete status for user '" + username + "': " + deleteResponse.getCode());
-        return deleteResponse.getCode() == 204;
+        if(deleteResponse.getCode() == Constants.SUCCESSFULLY_PROCEEDED){
+          Optional<ThinkUser> user = userRepository.findByKeycloakId(userId);
+          if(user.isPresent()){
+              var thinkUser = user.get();
+              thinkUser.setStatus(0);
+              userRepository.save(thinkUser);
+          }
+        }
+        return deleteResponse.getCode() == Constants.SUCCESSFULLY_PROCEEDED;
     }
 
     @Override
@@ -183,20 +250,20 @@ public class KeycloakUserServiceImpl implements KeycloakUserService{
         ClassicHttpResponse response = (ClassicHttpResponse) client.executeOpen(null, post, HttpClientContext.create());
         HttpEntity entity = response.getEntity();
 
-        if(response.getCode() != 200)
+        if(response.getCode() != Constants.STATUS_OK)
             return "Invalid credentials";
 
         String json = EntityUtils.toString(entity);
 
-        //return new ObjectMapper().readTree(json).get("access_token").asText();
-        return "Logged In Successfully";
+        return new ObjectMapper().readTree(json).get("access_token").asText();
+        //return "Logged In Successfully";
     }
 
+    @Override
     public String sendResetPasswordEmail(String username) throws IOException, ParseException {
-        String accessToken = tokenUtil.getAccessToken(); // Admin token
+        String accessToken = tokenUtil.getAccessToken();
 
-        // Get user ID from username
-        String userId = getUserIdByUsername(username);
+        String userId = getUserIdByUsername(username, accessToken);
         if (userId == null) {
             throw new RuntimeException("User not found");
         }
@@ -208,6 +275,16 @@ public class KeycloakUserServiceImpl implements KeycloakUserService{
         post.setHeader("Content-Type", "application/json");
 
         List<String> actions = List.of("UPDATE_PASSWORD");
+
+        String payload = new ObjectMapper().writeValueAsString(actions);
+        System.out.println("=== REQUEST DETAILS ===");
+        System.out.println("POST " + actionsUrl);
+        System.out.println("Headers:");
+        System.out.println("Authorization: Bearer " + accessToken);
+        System.out.println("Content-Type: application/json");
+        System.out.println("Payload: " + payload);
+        System.out.println("========================");
+
         StringEntity entity = new StringEntity(new ObjectMapper().writeValueAsString(actions), ContentType.APPLICATION_JSON);
         post.setEntity(entity);
 
@@ -215,7 +292,7 @@ public class KeycloakUserServiceImpl implements KeycloakUserService{
         HttpResponse response = client.execute(post);
 
         int statusCode = response.getCode();
-        if (statusCode == 204) {
+        if (statusCode == Constants.SUCCESSFULLY_PROCEEDED) {
             System.out.println("Reset password email sent.");
             return "Reset password email sent.";
         } else {
@@ -224,10 +301,13 @@ public class KeycloakUserServiceImpl implements KeycloakUserService{
         }
     }
 
-    public String getUserIdByUsername(String username) throws IOException, ParseException {
-        String accessToken = tokenUtil.getAccessToken();
+    @Override
+    public String getUserIdByUsername(String username, String accessToken) throws IOException, ParseException {
+        //String accessToken = tokenUtil.getAccessToken();
 
-        String searchUrl = keycloakUrl + "/admin/realms/master/users?username=" + URLEncoder.encode(username, StandardCharsets.UTF_8);
+        String searchUrl = keycloakUrl + "/admin/realms/"+realm+"/users?username="
+                + URLEncoder.encode(username, StandardCharsets.UTF_8)
+                + "&exact=true";
 
         HttpGet get = new HttpGet(searchUrl);
         get.setHeader("Authorization", "Bearer " + accessToken);
@@ -245,10 +325,11 @@ public class KeycloakUserServiceImpl implements KeycloakUserService{
         return array.get(0).get("id").asText();
     }
 
+    @Override
     public String setPassword(String username, String newPassword) throws IOException, ParseException {
         String accessToken = tokenUtil.getAccessToken();
 
-        String userId = getUserIdByUsername(username);
+        String userId = getUserIdByUsername(username, accessToken);
         if (userId == null) {
             throw new RuntimeException("User not found with username: " + username);
         }
@@ -268,11 +349,68 @@ public class KeycloakUserServiceImpl implements KeycloakUserService{
         HttpResponse response = client.execute(put);
 
         int statusCode = response.getCode();
-        if (statusCode == 204) {
+        if (statusCode == Constants.SUCCESSFULLY_PROCEEDED) {
             return "Password updated successfully for user: " + username;
         } else {
             return "Failed to update password. Status: " + statusCode;
         }
     }
+
+    @Override
+    public String getLastLoginTime(String username) throws IOException, ParseException {
+        String accessToken = tokenUtil.getAccessToken();
+        String userId = getUserIdByUsername(username, accessToken);
+        if (userId == null) {
+            throw new RuntimeException("User not found with username: " + username);
+        }
+        String url = keycloakUrl + "/admin/realms/" + realm + "/users/" + userId + "/sessions";
+
+        HttpGet get = new HttpGet(url);
+        get.setHeader("Authorization", "Bearer " + accessToken);
+        get.setHeader("Content-Type", "application/json");
+
+        try (CloseableHttpClient client = HttpClients.createDefault();
+             CloseableHttpResponse response = client.execute(get)) {
+
+            int statusCode = response.getCode();
+            if (statusCode == Constants.STATUS_OK) {
+                String responseBody = EntityUtils.toString(response.getEntity());
+
+                ObjectMapper mapper = new ObjectMapper();
+                JsonNode root = mapper.readTree(responseBody);
+
+                if (root.isArray()) {
+                    ArrayNode sessions = (ArrayNode) root;
+                    for (JsonNode session : sessions) {
+                        long lastAccessMillis = session.get("lastAccess").asLong();
+
+                        LocalDateTime lastAccessDateTime = Instant.ofEpochMilli(lastAccessMillis)
+                                .atZone(ZoneId.systemDefault())
+                                .toLocalDateTime();
+
+                        System.out.println("User Session ID: " + session.get("id").asText());
+                        System.out.println("Last Access (Formatted): " + lastAccessDateTime);
+                        return "Last Login : " + lastAccessDateTime;
+                    }
+                }
+            } else {
+                System.out.println("Failed to retrieve sessions. Status: " + statusCode);
+                return "Failed to retrieve sessions. Status: " + statusCode;
+            }
+        }
+        return null;
+    }
+
+    @Override
+    public List<ThinkUser> getAllUsersFromTable(){
+        return userRepository.findByStatusOrderByUserNameAsc(1);
+    }
+
+    @Override
+    public List<ThinkUser> searchFilter(UserRequest payload){
+        return userRepository.searchFilter(payload.getFirstName(), payload.getLastName(), payload.getUsername(), payload.getEmail(), payload.getCity(), payload.getStatus());
+    }
+
+
 
 }
