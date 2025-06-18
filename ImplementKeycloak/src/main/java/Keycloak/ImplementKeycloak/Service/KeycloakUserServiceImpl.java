@@ -183,10 +183,14 @@ public class KeycloakUserServiceImpl implements KeycloakUserService{
             Optional<ThinkUser> user = userRepository.findByKeycloakId(userId);
             if(user.isPresent()){
                 var thinkUser = user.get();
-                thinkUser.setFirstName(payload.getFirstName());
-                thinkUser.setLastName(payload.getLastName());
-                thinkUser.setEmail(payload.getEmail());
-                thinkUser.setCity(payload.getCity());
+                if(payload.getFirstName() != null)
+                   thinkUser.setFirstName(payload.getFirstName());
+                if(payload.getLastName() != null)
+                   thinkUser.setLastName(payload.getLastName());
+                if(payload.getEmail() != null)
+                   thinkUser.setEmail(payload.getEmail());
+                if(payload.getCity() != null)
+                   thinkUser.setCity(payload.getCity());
                 userRepository.save(thinkUser);
             }
         }
