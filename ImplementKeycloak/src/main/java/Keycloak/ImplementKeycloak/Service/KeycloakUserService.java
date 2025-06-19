@@ -32,4 +32,8 @@ public interface KeycloakUserService {
     List<ThinkUser> getAllUsersFromTable();
 
     List<ThinkUser> searchFilter(UserRequest payload);
+
+    Integer createUserByAdminClientSDK(UserRequest payload);
+
+    Integer updateUserByAdminClientSDK(UserRequest payload);
 }

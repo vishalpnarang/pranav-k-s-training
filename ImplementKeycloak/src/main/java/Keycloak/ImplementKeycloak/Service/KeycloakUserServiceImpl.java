@@ -1,7 +1,6 @@
 package Keycloak.ImplementKeycloak.Service;
 
 import Keycloak.ImplementKeycloak.Model.Constants;
-import Keycloak.ImplementKeycloak.Model.KeycloakTokenUtil;
 import Keycloak.ImplementKeycloak.Model.ThinkUser;
 import Keycloak.ImplementKeycloak.Model.UserRequest;
 import Keycloak.ImplementKeycloak.repository.UserRepository;
@@ -9,6 +8,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import jakarta.ws.rs.core.Response;
 import org.apache.hc.client5.http.classic.HttpClient;
 import org.apache.hc.client5.http.classic.methods.HttpDelete;
 import org.apache.hc.client5.http.classic.methods.HttpGet;
@@ -23,9 +23,12 @@ import org.apache.hc.core5.http.*;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.apache.hc.core5.http.io.entity.StringEntity;
 import org.apache.hc.core5.http.message.BasicNameValuePair;
+import org.keycloak.admin.client.Keycloak;
+import org.keycloak.admin.client.resource.UsersResource;
+import org.keycloak.representations.idm.CredentialRepresentation;
+import org.keycloak.representations.idm.UserRepresentation;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -48,6 +51,8 @@ public class KeycloakUserServiceImpl implements KeycloakUserService{
     private String realm;
     @Value("${keycloak.client-id}")
     private String clientId;
+    @Value("${keycloak.client-secret-key}")
+    private String clientSecret;
 
     @Autowired
     private UserRepository userRepository;
@@ -256,6 +261,8 @@ public class KeycloakUserServiceImpl implements KeycloakUserService{
         params.add(new BasicNameValuePair("client_id", clientId));
         params.add(new BasicNameValuePair("username", username));
         params.add(new BasicNameValuePair("password", password));
+        params.add(new BasicNameValuePair("client_secret", clientSecret));
+
 
         post.setEntity(new UrlEncodedFormEntity(params));
         post.setHeader("Content-Type", "application/x-www-form-urlencoded");
@@ -423,6 +430,90 @@ public class KeycloakUserServiceImpl implements KeycloakUserService{
         return userRepository.searchFilter(payload.getFirstName(), payload.getLastName(), payload.getUserName(), payload.getEmail(), payload.getCity(), payload.getStatus());
     }
 
+
+    //Using Keycloak admin client sdk
+
+    @Override
+    public Integer createUserByAdminClientSDK(UserRequest payload) {
+        Keycloak keycloak = tokenUtil.getKeycloakInstance();
+        UsersResource usersResource = keycloak.realm(realm).users();
+
+        UserRepresentation user = new UserRepresentation();
+        user.setUsername(payload.getUserName().trim().replaceAll("\\s+", "")); //spaces not allowed
+        user.setEnabled(true);
+        user.setEmail(payload.getEmail());
+        user.setEmailVerified(true);
+        user.setFirstName(payload.getFirstName());
+        user.setLastName(payload.getLastName());
+
+        Response response = usersResource.create(user);
+        int status = response.getStatus();
+
+        if (status == Constants.CREATED) {
+            String userId = response.getLocation().getPath().replaceAll(".*/([^/]+)$", "$1"); //get userId by path
+
+            CredentialRepresentation passwordCred = new CredentialRepresentation();
+            passwordCred.setTemporary(false);
+            passwordCred.setType(CredentialRepresentation.PASSWORD);
+            passwordCred.setValue(payload.getPassword());
+
+            usersResource.get(userId).resetPassword(passwordCred);
+
+            ThinkUser newUser = new ThinkUser();
+            newUser.setUserName(payload.getUserName());
+            newUser.setEmail(payload.getEmail());
+            newUser.setKeycloakId(userId);
+            newUser.setFirstName(payload.getFirstName());
+            newUser.setLastName(payload.getLastName());
+            newUser.setStatus(1);
+            newUser.setCity(payload.getCity());
+            userRepository.save(newUser);
+        }
+
+        return status;
+    }
+
+    @Override
+    public Integer updateUserByAdminClientSDK(UserRequest payload) {
+        Keycloak keycloak = tokenUtil.getKeycloakInstance();
+        UsersResource usersResource = keycloak.realm(realm).users();
+
+        List<UserRepresentation> users = usersResource.search(payload.getUserName(), true);
+        if (users.isEmpty()) {
+            System.out.println("User not found");
+            return Constants.NOT_FOUND;
+        }
+
+        UserRepresentation user = users.get(0);
+        String userId = user.getId();
+
+        if (payload.getFirstName() != null)
+            user.setFirstName(payload.getFirstName());
+        if (payload.getLastName() != null)
+            user.setLastName(payload.getLastName());
+        if (payload.getEmail() != null)
+            user.setEmail(payload.getEmail());
+        if (payload.getEnable() != null)
+            user.setEnabled(payload.getEnable());
+
+        usersResource.get(userId).update(user);
+
+        Optional<ThinkUser> optionalUser = userRepository.findByKeycloakId(userId);
+        if (optionalUser.isPresent()) {
+            ThinkUser thinkUser = optionalUser.get();
+            if (payload.getFirstName() != null)
+                thinkUser.setFirstName(payload.getFirstName());
+            if (payload.getLastName() != null)
+                thinkUser.setLastName(payload.getLastName());
+            if (payload.getEmail() != null)
+                thinkUser.setEmail(payload.getEmail());
+            if (payload.getCity() != null)
+                thinkUser.setCity(payload.getCity());
+            userRepository.save(thinkUser);
+        }
+
+        return Constants.SUCCESSFULLY_PROCEEDED;
+    }
 
 
 }

@@ -20,7 +20,7 @@ public class KeycloakUserController {
         @PostMapping("/create")
         public ResponseEntity<String> createUser(@RequestBody UserRequest payload) {
             try {
-                int status = userService.createUser(payload);
+                int status = userService.createUserByAdminClientSDK(payload);
                 if(status == Constants.CONFLICT)
                    return ResponseEntity.ok("User already exist");
                 if(status == Constants.CREATED)
@@ -34,10 +34,8 @@ public class KeycloakUserController {
     @PostMapping("/update")
     public ResponseEntity<String> UpdateUser(@RequestBody UserRequest payload) {
         try {
-            int status = userService.updateUser(payload);
-            if(status == Constants.SUCCESSFULLY_PROCEEDED)
-               return ResponseEntity.ok("User updated successfully");
-            return ResponseEntity.ok("Something went wrong");
+           userService.updateUserByAdminClientSDK(payload);
+           return ResponseEntity.ok("User updated successfully");
         } catch (Exception e) {
             return ResponseEntity.status(Constants.INTERNAL_SERVER_ERROR).body("Error: " + e.getMessage());
         }

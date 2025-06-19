@@ -1,4 +1,4 @@
-package Keycloak.ImplementKeycloak.Model;
+package Keycloak.ImplementKeycloak.Service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.hc.client5.http.classic.HttpClient;
@@ -9,6 +9,8 @@ import org.apache.hc.client5.http.protocol.HttpClientContext;
 import org.apache.hc.core5.http.*;
 import org.apache.hc.core5.http.io.entity.EntityUtils;
 import org.apache.hc.core5.http.message.BasicNameValuePair;
+import org.keycloak.admin.client.Keycloak;
+import org.keycloak.admin.client.KeycloakBuilder;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -29,6 +31,10 @@ public class KeycloakTokenUtil {
     private String username;
     @Value("${keycloak.password}")
     private String password;
+    @Value(("${keycloak.url}"))
+    private String serverUrl;
+    @Value("${keycloak.client-secret-key}")
+    private String clientSecret;
 
     public String getAccessToken() throws IOException, ParseException {
         HttpClient client = HttpClients.createDefault();
@@ -39,6 +45,7 @@ public class KeycloakTokenUtil {
         params.add(new BasicNameValuePair("client_id", clientId));
         params.add(new BasicNameValuePair("username", username));
         params.add(new BasicNameValuePair("password", password));
+        params.add(new BasicNameValuePair("client_secret", clientSecret));
 
         post.setEntity(new UrlEncodedFormEntity(params)); //map can not pass directly to encode so we used NameValuePair
         post.setHeader("Content-Type", "application/x-www-form-urlencoded");
@@ -49,5 +56,15 @@ public class KeycloakTokenUtil {
         String json = EntityUtils.toString(entity);
 
         return new ObjectMapper().readTree(json).get("access_token").asText();
+    }
+
+    public Keycloak getKeycloakInstance() {  //keycloak admin client sdk
+        return KeycloakBuilder.builder()
+                .serverUrl(serverUrl)
+                .realm(realm)
+                .clientId(clientId)
+                .username(username)
+                .password(password)
+                .build();
     }
 }
