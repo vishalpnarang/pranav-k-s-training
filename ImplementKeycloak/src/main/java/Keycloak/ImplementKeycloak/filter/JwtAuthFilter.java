@@ -1,5 +1,6 @@
 package Keycloak.ImplementKeycloak.filter;
 
+import Keycloak.ImplementKeycloak.Model.TenantContext;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.*;
@@ -40,7 +41,19 @@ public class JwtAuthFilter implements Filter {
 
         String path = request.getRequestURI();
 
-        if (path.contains("/user/login")) {
+        String tenantId = request.getHeader("X-Tenant-ID");
+
+        if (tenantId != null) {
+            TenantContext.setTenant(tenantId);
+        }
+
+//        try {
+//            chain.doFilter(request, response);
+//        } finally {
+//            TenantContext.clear();
+//        }
+
+        if (path.contains("/user/login") || path.contains("/user/create") || path.contains("/user/get/users")) {
             chain.doFilter(req, res);
             return;
         }

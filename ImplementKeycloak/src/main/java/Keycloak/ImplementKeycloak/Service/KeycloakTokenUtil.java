@@ -63,6 +63,7 @@ public class KeycloakTokenUtil {
                 .serverUrl(serverUrl)
                 .realm(realm)
                 .clientId(clientId)
+                .clientSecret(clientSecret)
                 .username(username)
                 .password(password)
                 .build();

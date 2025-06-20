@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import jakarta.transaction.Transactional;
 import jakarta.ws.rs.core.Response;
 import org.apache.hc.client5.http.classic.HttpClient;
 import org.apache.hc.client5.http.classic.methods.HttpDelete;
@@ -433,6 +434,7 @@ public class KeycloakUserServiceImpl implements KeycloakUserService{
 
     //Using Keycloak admin client sdk
 
+    @Transactional
     @Override
     public Integer createUserByAdminClientSDK(UserRequest payload) {
         Keycloak keycloak = tokenUtil.getKeycloakInstance();
